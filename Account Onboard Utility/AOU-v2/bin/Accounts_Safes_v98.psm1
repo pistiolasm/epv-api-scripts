@@ -575,13 +575,13 @@ Function New-Account
 		$addAccountResult = $(Invoke-Rest -Uri $URL_Account -Header $(Get-LogonHeader) -Body $restBody -Command "Post")		
 		if($addAccountResult -ne $null)
 		{
-			Write-LogMessage -Type Debug -MSG "Account $("{0}@{1}" -f $($AccountObject.userName), $AccountObject.address) Onboarded Successfully"
+			Write-LogMessage -Type Debug -MSG (Get-AccountMessageForLog -AccountObject $AccountObject -Type "Success" -Action "Onboarded")
 			$retAddAccount = $true
 		}
 		return $retAddAccount
 	}
 	catch{
-		Throw $(New-Object System.Exception ("New-Account: Could not Create Account $("{0}@{1}" -f $($AccountObject.userName), $AccountObject.address)",$_.Exception))
+		Throw $(New-Object System.Exception ("New-Account: $(Get-AccountMessageForLog -AccountObject $AccountObject -Type "Fail" -Action "Create")",$_.Exception))
 	}
 }
 Export-ModuleMember -Function New-Account
@@ -708,9 +708,60 @@ Function Update-Account
 		return $retUpdateAccount
 	}
 	catch{
-		Throw $(New-Object System.Exception ("Update-Account: Could not Update Account $("{0}@{1}" -f $($AccountObject.userName), $AccountObject.address)",$_.Exception))
+		Throw $(New-Object System.Exception ("Update-Account: $(Get-AccountMessageForLog -AccountObject $AccountObject -Type "Fail" -Action "Update")",$_.Exception))
 	}
 }
 Export-ModuleMember -Function Update-Account
+
+# @FUNCTION@ ======================================================================================================================
+# Name...........: Delete-Account
+# Description....: Deletes an Account from the PVWA
+# Parameters.....: Account object created from New-AccountObject
+# Return Values..: True / False
+# =================================================================================================================================
+Function Delete-Account
+{
+<# 
+.SYNOPSIS 
+	Deletes an Account from the PVWA
+.DESCRIPTION
+	Deletes an Account from the PVWA
+.PARAMETER AccountObject
+	Account Object (created from New-AccountObject function)
+#>
+	param(
+		[Parameter(Mandatory=$true)]
+		[PSObject]$AccountObject
+	)
+	try{			
+		$retDelAccount = $false
+		# Find the account for deletion
+		$d_account = $(Get-Account -safeName $AccountObject.safeName -accountName $AccountObject.userName -accountAddress $AccountObject.Address)
+		If($null -eq $d_account)
+		{
+			Write-LogMessage -Type Error -Msg "Account '$(Get-AccountLogName -AccountObject $AccountObject)' does not exists - skipping deletion"
+		}
+		ElseIf($d_account.Count -gt 1)
+		{
+			Write-LogMessage -Type Error -Msg "Too many accounts for '$(Get-AccountLogName -AccountObject $AccountObject)' in safe $($AccountObject.safeName)"
+		}
+		Else
+		{
+			# Single account found for deletion
+			$urlDeleteAccount = $URL_AccountsDetails -f $d_account.id
+			$DeleteAccountResult = $(Invoke-Rest -Uri $urlDeleteAccount -Header $g_LogonHeader -Command "DELETE")
+			if($DeleteAccountResult -ne $null)
+			{
+				Write-LogMessage -Type Debug -MSG (Get-AccountMessageForLog -AccountObject $AccountObject -Type "Success" -Action "Deleted")
+				$retDelAccount = $true
+			}
+		}
+		return $retDelAccount
+	}
+	catch{
+		Throw $(New-Object System.Exception ("Delete-Account: $(Get-AccountMessageForLog -AccountObject $AccountObject -Type "Fail" -Action "Delete")",$_.Exception))
+	}
+}
+Export-ModuleMember -Function Delete-Account
 #endregion
 #endregion

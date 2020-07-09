@@ -124,7 +124,7 @@ Function Write-LogMessage
 		if([string]::IsNullOrEmpty($Msg)) { $Msg = "N/A" }
 		
 		# Mask Passwords
-		if($Msg -match '((?>password|secret)\s{0,}["\:=]{1,}\s{0,}["]{0,})(?=(\w+))')
+		if($Msg -match '((?:"password"|"secret"|"NewCredentials")\s{0,}["\:=]{1,}\s{0,}["]{0,})(?=([\w!@#$%^&*()-\\\/]+))')
 		{
 			$Msg = $Msg.Replace($Matches[2],"****")
 		}
@@ -211,6 +211,77 @@ Function Join-ExceptionMessage
 	}
 }
 Export-ModuleMember -Function Join-ExceptionMessage
+
+# @FUNCTION@ ======================================================================================================================
+# Name...........: Get-AccountLogName
+# Description....: Returns an Account Name for logs
+# Parameters.....: Account Object
+# Return Values..: Formatted String of Account name for log
+# =================================================================================================================================
+Function Get-AccountLogName
+{
+<# 
+.SYNOPSIS 
+	Returns an Account Name for logs
+.DESCRIPTION
+	Returns an Account Name for logs
+.PARAMETER AccountObject
+	Account Object (created from New-AccountObject function)
+#>
+	param(
+		[Parameter(Mandatory=$true)]
+		[PSObject]$AccountObject
+	)
+	
+	If($AccountObject -ne $null)
+	{
+		return ("{0}@{1}" -f $($AccountObject.userName), $AccountObject.address)
+	}
+}
+Export-ModuleMember -Function Get-AccountLogName
+
+# @FUNCTION@ ======================================================================================================================
+# Name...........: Get-AccountMessageForLog
+# Description....: Returns an Account related message for log based on type
+# Parameters.....: Account Object, Type (Success, Fail), Action
+# Return Values..: Formatted String of Account message for log
+# =================================================================================================================================
+Function Get-AccountMessageForLog
+{
+<# 
+.SYNOPSIS 
+	Returns an Account related message for log based on type
+.DESCRIPTION
+	Returns an Account related message for log based on type
+.PARAMETER AccountObject
+	Account Object (created from New-AccountObject function)
+.PARAMETER Type
+	Message Type (Success, Fail)
+#>
+	param(
+		[Parameter(Mandatory=$true)]
+		[PSObject]$AccountObject,
+		[Parameter(Mandatory=$true)]
+		[ValidateSet("Success","Fail")]
+		[String]$Type,
+		[Parameter(Mandatory=$true)]
+		[String]$Action = "Onboarded"
+	)
+	
+	If($AccountObject -ne $null)
+	{
+		# Format the Account message for logging
+		If($Type -eq "Success") 
+		{
+			return "Account $(Get-AccountLogName -AccountObject $AccountObject) $Action Successfully"
+		}
+		ElseIf ($Type -eq "Fail")
+		{
+			return "Could not $Action Account $(Get-AccountLogName -AccountObject $AccountObject)"
+		}
+	}
+}
+Export-ModuleMember -Function Get-AccountMessageForLog
 #endregion
 
 #region HTTP REST Functions
@@ -446,11 +517,14 @@ Export-ModuleMember -Function Invoke-Logon
 Function Invoke-Logoff
 {
 	try{
-		# Logoff the session
-		# ------------------
-		Write-LogMessage -Type Info -Msg "Logoff Session..."
-		Invoke-Rest -Command Post -Uri $URL_Logoff -Header $g_LogonHeader | out-null
-		Set-Variable -Name g_LogonHeader -Value $null -Scope global
+		# Make sure the Logon Header is not empty before runnin logoff
+		If(![string]::IsNullOrEmpty($g_LogonHeader))
+		{
+			# Logoff the session
+			Write-LogMessage -Type Info -Msg "Logoff Session..."
+			Invoke-Rest -Command Post -Uri $URL_Logoff -Header $g_LogonHeader | out-null
+			Set-Variable -Name g_LogonHeader -Value $null -Scope global
+		}
 	} catch {
 		Throw $(New-Object System.Exception ("Invoke-Logoff: Failed to logoff session",$_.Exception))
 	}
@@ -584,6 +658,12 @@ Function Test-RESTResource
 #endregion
 
 #region External Helper Function
+# @FUNCTION@ ======================================================================================================================
+# Name...........: OpenFile-Dialog
+# Description....: Opens a new "Open File" Dialog
+# Parameters.....: LocationPath
+# Return Values..: Selected file path
+# =================================================================================================================================
 Function OpenFile-Dialog
 {
 <# 
@@ -603,10 +683,16 @@ Function OpenFile-Dialog
     $OpenFileDialog.initialDirectory = $LocationPath
     $OpenFileDialog.filter = "CSV (*.csv)| *.csv"
     $OpenFileDialog.ShowDialog() | Out-Null
-    $OpenFileDialog.filename
+    return $OpenFileDialog.filename
 }
 Export-ModuleMember -Function OpenFile-Dialog
 
+# @FUNCTION@ ======================================================================================================================
+# Name...........: Convert-ToBool
+# Description....: Converts text to Bool
+# Parameters.....: Text
+# Return Values..: Boolean value of the text
+# =================================================================================================================================
 Function Convert-ToBool
 {
 <# 
